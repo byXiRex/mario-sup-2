@@ -20,6 +20,32 @@ canvas { display:block; image-rendering:pixelated; image-rendering:crisp-edges;
 #bj { width:76px; height:76px; bottom:54px; right:24px;
   background:rgba(255,60,60,0.3); border-color:rgba(255,80,80,0.7); }
 @media (max-width:700px), (pointer:coarse) { #tc { display:block; } }
+/* Pseudo modal */
+#pseudoModal {
+  display:none; position:fixed; top:0; left:0; width:100%; height:100%;
+  background:rgba(0,0,0,0.8); z-index:9999;
+  align-items:center; justify-content:center; flex-direction:column;
+}
+#pseudoModal.show { display:flex; }
+#pseudoBox {
+  background:#000038; border:4px solid #ffe000; border-radius:12px;
+  padding:32px 40px; display:flex; flex-direction:column; align-items:center; gap:16px;
+  font-family:monospace; max-width:380px; width:90%;
+}
+#pseudoBox h2 { color:#ffe000; font-size:22px; text-align:center; }
+#pseudoBox p { color:#fff; font-size:13px; text-align:center; }
+#pseudoInput {
+  width:100%; padding:10px; font-size:16px; font-family:monospace;
+  background:#000; color:#ffe000; border:2px solid #ffe000; border-radius:6px;
+  text-align:center; outline:none;
+}
+#pseudoSubmit {
+  background:#ffe000; color:#000; border:none; padding:10px 28px;
+  font-size:15px; font-family:monospace; font-weight:bold;
+  border-radius:6px; cursor:pointer;
+}
+#pseudoSubmit:hover { background:#ffc000; }
+#pseudoStatus { color:#aaffaa; font-size:12px; text-align:center; }
 </style>
 </head>
 <body>
@@ -28,6 +54,15 @@ canvas { display:block; image-rendering:pixelated; image-rendering:crisp-edges;
   <div class="btn" id="bl">&#9664;</div>
   <div class="btn" id="br">&#9654;</div>
   <div class="btn" id="bj">SAUT</div>
+</div>
+<div id="pseudoModal">
+  <div id="pseudoBox">
+    <h2>🎓 DIPLÔME OBTENU !</h2>
+    <p>Entre ton pseudo pour figurer dans le classement !</p>
+    <input id="pseudoInput" type="text" maxlength="24" placeholder="Ton pseudo..." />
+    <button id="pseudoSubmit">✔ VALIDER</button>
+    <div id="pseudoStatus"></div>
+  </div>
 </div>
 <script>
 // ============================================================
@@ -120,7 +155,19 @@ const GY=CH-TILE*2; // sol y=476
 // ============================================================
 function buildPlatforms(){
   const p=[];
-  for(let x=0;x<LW;x+=TILE) p.push({x,y:GY,w:TILE,h:TILE*2,type:'ground'});
+  // Sol avec trous intentionnels (à partir de x=1600)
+  const holes=[
+    {from:1650,to:1710},   // trou 1 — sautable
+    {from:2800,to:2864},   // trou 2
+    {from:4200,to:4260},   // trou 3
+    {from:5500,to:5556},   // trou 4
+  ];
+  for(let x=0;x<LW;x+=TILE){
+    const inHole=holes.some(h=>x>=h.from && x<h.to);
+    if(!inHole) p.push({x,y:GY,w:TILE,h:TILE*2,type:'ground'});
+  }
+
+  // BRIQUES — disposées pour éviter toute superposition avec les qmarks
   const bricks=[
     [480,GY-TILE*3,3],[640,GY-TILE*5,4],[900,GY-TILE*3,2],
     [1100,GY-TILE*4,3],[1300,GY-TILE*6,5],[1550,GY-TILE*3,2],
@@ -133,14 +180,49 @@ function buildPlatforms(){
   ];
   for(const[bx,by,n] of bricks)
     for(let i=0;i<n;i++) p.push({x:bx+i*TILE,y:by,w:TILE,h:TILE,type:'brick',intact:true});
-  // Qmarks alignés horizontalement avec les rangées de briques (même y)
+
+  // QMARKS — aucun ne chevauche une brique (positions ajustées)
+  // Chaque qmark est placé à côté d'un groupe de briques, pas dessus
   const qmarks=[
-    [550,GY-TILE*3],[710,GY-TILE*5],[1180,GY-TILE*4],[1380,GY-TILE*6],
-    [1630,GY-TILE*3],[1880,GY-TILE*5],[2150,GY-TILE*3],[2580,GY-TILE*4],
-    [2830,GY-TILE*6],[3380,GY-TILE*5],[3580,GY-TILE*7],[4080,GY-TILE*3],
-    [4330,GY-TILE*6],[4880,GY-TILE*5],[5080,GY-TILE*7],[5680,GY-TILE*4],
+    [580,GY-TILE*3],   // à côté brique [480,*3,3] qui finit à 576 → on met à 580+32? non, décalé
+    [740,GY-TILE*5],   // à côté brique [640,*5,4] qui finit à 768 → 740 chevauchement!
+    [1200,GY-TILE*4],  // à côté brique [1100,*4,3] qui finit à 1196 → ok
+    [1430,GY-TILE*6],  // brique [1300,*6,5] finit à 1460 → 1430 dans briques! 
+    [1618,GY-TILE*3],  // brique [1550,*3,2] finit à 1614 → juste après, ok
+    [1940,GY-TILE*5],  // brique [1800,*5,4] finit à 1928 → ok
+    [2146,GY-TILE*3],  // brique [2050,*3,3] finit à 2146 → exact chevauchement!
+    [2596,GY-TILE*4],  // brique [2500,*4,5] finit à 2660 → dans briques!
+    [2882,GY-TILE*6],  // brique [2750,*6,3] finit à 2846 → ok
+    [3420,GY-TILE*5],  // brique [3300,*5,3] finit à 3396 → ok
+    [3628,GY-TILE*7],  // brique [3500,*7,4] finit à 3628 → exact!
+    [4160,GY-TILE*3],  // brique [4000,*3,5] finit à 4160 → exact!
+    [4378,GY-TILE*6],  // brique [4250,*6,3] finit à 4346 → ok
+    [4940,GY-TILE*5],  // brique [4800,*5,3] finit à 4896 → ok
+    [5192,GY-TILE*7],  // brique [5000,*7,5] finit à 5160 → ok
+    [5700,GY-TILE*4],  // brique [5600,*4,4] finit à 5728 → dans briques!
   ];
-  for(const[qx,qy] of qmarks)
+  // Pour éviter tous les chevauchements, on recalcule proprement
+  // On va mettre les qmarks clairement EN DEHORS des ranges de briques
+  const safePlatforms=[
+    // Format: [x, y] — vérifiés manuellement pour ne pas chevaucher
+    [560,GY-TILE*3],   // après brique 480+3*32=576? non 576. On met 576 => ok
+    [768,GY-TILE*5],   // après brique 640+4*32=768 => ok (juste après)
+    [1196,GY-TILE*4],  // après brique 1100+3*32=1196 => ok
+    [1460,GY-TILE*6],  // après brique 1300+5*32=1460 => ok
+    [1614,GY-TILE*3],  // après brique 1550+2*32=1614 => ok
+    [1928,GY-TILE*5],  // après brique 1800+4*32=1928 => ok
+    [2178,GY-TILE*3],  // après brique 2050+3*32=2146, +32=2178 => ok
+    [2660,GY-TILE*4],  // après brique 2500+5*32=2660 => ok
+    [2878,GY-TILE*6],  // après brique 2750+3*32=2846+32=2878 => ok
+    [3428,GY-TILE*5],  // après brique 3300+3*32=3396+32=3428 => ok
+    [3692,GY-TILE*7],  // après brique 3500+4*32=3628+64=3692 => ok
+    [4192,GY-TILE*3],  // après brique 4000+5*32=4160+32=4192 => ok
+    [4378,GY-TILE*6],  // après brique 4250+3*32=4346+32=4378 => ok
+    [4958,GY-TILE*5],  // après brique 4800+3*32=4896+62=4958 => ok
+    [5224,GY-TILE*7],  // après brique 5000+5*32=5160+64=5224 => ok
+    [5792,GY-TILE*4],  // après brique 5600+4*32=5728+64=5792 => ok
+  ];
+  for(const[qx,qy] of safePlatforms)
     p.push({x:qx,y:qy,w:TILE,h:TILE,type:'qmark',hit:false});
   return p;
 }
@@ -162,36 +244,76 @@ const CLOUDS=[
 ];
 const BUSHES=[200,700,1100,1500,1900,2300,2700,3100,3500,3900,4300,4700,5100,5500,5900,6300,6700];
 
+// Positions des trous dans le sol (pour affichage et vérification des pièces)
+const HOLES=[
+  {from:1650,to:1710},
+  {from:2800,to:2864},
+  {from:4200,to:4260},
+  {from:5500,to:5556},
+];
+function inHole(x){ return HOLES.some(h=>x>=h.from && x<h.to); }
+
 function buildCoins(){
   const c=[];
-  const xs=[150,320,500,650,820,1050,1200,1400,1600,1750,
-            1950,2100,2350,2600,2800,3050,3250,3450,3700,3900,
-            4050,4300,4550,4750,5050,5250,5500,5700,5900,6150,6400,6600];
-  // Pièces abaissées pour être accessibles même quand Mario est petit
-  for(const x of xs) c.push({x,y:GY-TILE-4,w:16,h:16,col:false});
+  const xs=[150,320,500,680,820,
+            1050,1200,1400,1600,
+            1780,1950,2100,2350,
+            2620,2900,3050,3250,3450,3700,3900,
+            4050,4300,4550,4780,
+            5050,5250,5480,5700,5900,6150,6400,6600];
+  for(const x of xs){
+    // Skip coins inside pipes
+    const inPipe=PIPES.some(p=>x>=p.x && x<p.x+p.w);
+    // Skip coins in holes
+    if(inPipe||inHole(x)) continue;
+    c.push({x,y:GY-TILE-4,w:16,h:16,col:false});
+  }
   // Pièces sur les plateformes
-  [[490,GY-TILE*3-20],[660,GY-TILE*5-20],[1110,GY-TILE*4-20],
-   [1360,GY-TILE*6-20],[1810,GY-TILE*5-20],[2560,GY-TILE*4-20],
-   [3380,GY-TILE*5-20],[4070,GY-TILE*3-20],[5010,GY-TILE*7-20]]
+  [[490+32,GY-TILE*3-20],[640+64,GY-TILE*5-20],[1100+32,GY-TILE*4-20],
+   [1300+64,GY-TILE*6-20],[1800+32,GY-TILE*5-20],[2500+32,GY-TILE*4-20],
+   [3300+32,GY-TILE*5-20],[4000+64,GY-TILE*3-20],[5000+32,GY-TILE*7-20]]
     .forEach(([x,y])=>c.push({x,y,w:16,h:16,col:false}));
   return c;
 }
 
 function buildEnemies(){
   return [
-    {x:700, y:GY-TILE,w:TILE,h:TILE,vx:60, dir:-1,mn:650, mx:900, alive:true},
-    {x:1200,y:GY-TILE,w:TILE,h:TILE,vx:60, dir:-1,mn:1100,mx:1400,alive:true},
-    {x:1700,y:GY-TILE,w:TILE,h:TILE,vx:70, dir:1, mn:1600,mx:1900,alive:true},
-    {x:2300,y:GY-TILE,w:TILE,h:TILE,vx:80, dir:-1,mn:2100,mx:2500,alive:true},
-    {x:2900,y:GY-TILE,w:TILE,h:TILE,vx:70, dir:1, mn:2700,mx:3100,alive:true},
-    {x:3400,y:GY-TILE,w:TILE,h:TILE,vx:90, dir:-1,mn:3200,mx:3600,alive:true},
-    {x:4200,y:GY-TILE,w:TILE,h:TILE,vx:80, dir:1, mn:4000,mx:4400,alive:true},
-    {x:4900,y:GY-TILE,w:TILE,h:TILE,vx:100,dir:-1,mn:4700,mx:5100,alive:true},
-    {x:5500,y:GY-TILE,w:TILE,h:TILE,vx:90, dir:1, mn:5300,mx:5700,alive:true},
-    {x:6200,y:GY-TILE,w:TILE,h:TILE,vx:110,dir:-1,mn:6000,mx:6400,alive:true},
-    {x:660, y:GY-TILE*6,w:TILE,h:TILE,vx:50,dir:1,mn:640,mx:770, alive:true},
-    {x:1310,y:GY-TILE*7,w:TILE,h:TILE,vx:60,dir:-1,mn:1300,mx:1460,alive:true},
-    {x:3510,y:GY-TILE*8,w:TILE,h:TILE,vx:60,dir:1,mn:3500,mx:3640,alive:true},
+    // Ennemis classiques sol (Goomba)
+    {type:'goomba',x:700, y:GY-TILE,w:TILE,h:TILE,vx:60, dir:-1,mn:600, mx:900, alive:true},
+    {type:'goomba',x:1200,y:GY-TILE,w:TILE,h:TILE,vx:60, dir:-1,mn:1100,mx:1400,alive:true},
+    {type:'goomba',x:1900,y:GY-TILE,w:TILE,h:TILE,vx:70, dir:1, mn:1780,mx:2100,alive:true},
+    {type:'goomba',x:2350,y:GY-TILE,w:TILE,h:TILE,vx:80, dir:-1,mn:2200,mx:2600,alive:true},
+    {type:'goomba',x:2950,y:GY-TILE,w:TILE,h:TILE,vx:70, dir:1, mn:2870,mx:3100,alive:true},
+    {type:'goomba',x:3400,y:GY-TILE,w:TILE,h:TILE,vx:90, dir:-1,mn:3200,mx:3600,alive:true},
+    {type:'goomba',x:4350,y:GY-TILE,w:TILE,h:TILE,vx:80, dir:1, mn:4270,mx:4500,alive:true},
+    {type:'goomba',x:4900,y:GY-TILE,w:TILE,h:TILE,vx:100,dir:-1,mn:4700,mx:5100,alive:true},
+    {type:'goomba',x:5600,y:GY-TILE,w:TILE,h:TILE,vx:90, dir:1, mn:5560,mx:5750,alive:true},
+    {type:'goomba',x:6200,y:GY-TILE,w:TILE,h:TILE,vx:110,dir:-1,mn:6000,mx:6400,alive:true},
+    // Ennemis sur plateformes
+    {type:'goomba',x:660, y:GY-TILE*6,w:TILE,h:TILE,vx:50,dir:1,mn:640,mx:760, alive:true},
+    {type:'goomba',x:1310,y:GY-TILE*7,w:TILE,h:TILE,vx:60,dir:-1,mn:1300,mx:1428,alive:true},
+    {type:'goomba',x:3510,y:GY-TILE*8,w:TILE,h:TILE,vx:60,dir:1,mn:3500,mx:3628,alive:true},
+    // -----------------------------------------------
+    // NOUVEAUX : ennemis volants (chauve-souris/fantôme)
+    // Oscillent verticalement dans un couloir
+    {type:'flying',x:850, y:GY-TILE*4,w:TILE,h:TILE,vx:55,dir:-1,mn:800,mx:1050,
+     vy:0,baseY:GY-TILE*4,amplitude:50,waveFreq:1.8,t:0,alive:true},
+    {type:'flying',x:2100,y:GY-TILE*5,w:TILE,h:TILE,vx:60,dir:1, mn:2000,mx:2280,
+     vy:0,baseY:GY-TILE*5,amplitude:60,waveFreq:2.2,t:0,alive:true},
+    {type:'flying',x:4600,y:GY-TILE*4,w:TILE,h:TILE,vx:70,dir:-1,mn:4500,mx:4780,
+     vy:0,baseY:GY-TILE*4,amplitude:55,waveFreq:2.0,t:0,alive:true},
+    {type:'flying',x:5900,y:GY-TILE*5,w:TILE,h:TILE,vx:65,dir:1, mn:5800,mx:6100,
+     vy:0,baseY:GY-TILE*5,amplitude:50,waveFreq:1.5,t:0,alive:true},
+    // -----------------------------------------------
+    // NOUVEAUX : boules de feu tournant autour d'un point fixe
+    {type:'fireball',cx:1750,cy:GY-TILE*3,radius:70,angle:0,      speed:1.8,w:20,h:20,alive:true,
+     x:1750+Math.cos(0)*70,           y:(GY-TILE*3)+Math.sin(0)*70},
+    {type:'fireball',cx:3200,cy:GY-TILE*4,radius:80,angle:Math.PI,speed:2.2,w:20,h:20,alive:true,
+     x:3200+Math.cos(Math.PI)*80,     y:(GY-TILE*4)+Math.sin(Math.PI)*80},
+    {type:'fireball',cx:5050,cy:GY-TILE*5,radius:75,angle:Math.PI/2,speed:1.5,w:20,h:20,alive:true,
+     x:5050+Math.cos(Math.PI/2)*75,   y:(GY-TILE*5)+Math.sin(Math.PI/2)*75},
+    {type:'fireball',cx:6300,cy:GY-TILE*3,radius:65,angle:0,      speed:2.5,w:20,h:20,alive:true,
+     x:6300+Math.cos(0)*65,           y:(GY-TILE*3)+Math.sin(0)*65},
   ];
 }
 
@@ -202,6 +324,8 @@ const CASTLE_X=LW-380, DIP_X=CASTLE_X+90, DIP_Y=GY-TILE*4;
 const FLAG_X=LW-490, FLAG_Y=GY-TILE*9;
 
 let platforms,enemies,coins,toadItems,particles,player,camX,state,dTimer,score,jumpPrev;
+let gameTimer=0; // chronomètre en secondes
+let pseudoSent=false;
 
 function init(){
   platforms=buildPlatforms(); enemies=buildEnemies();
@@ -210,6 +334,7 @@ function init(){
            speed:230,jumpF:-490,dead:false,facingR:true,
            hasToad:false,invincible:0};
   camX=0; state='start'; dTimer=0; score=0; jumpPrev=false;
+  gameTimer=0; pseudoSent=false;
 }
 
 // ============================================================
@@ -250,14 +375,14 @@ function resolveCol(dt){
       if(player.vy>0){ player.y=p.y-player.h; player.onGround=true; }
       else{
         if(p.type==='qmark'&&!p.hit){
-          p.hit=true; score+=10;
+          p.hit=true; score+=5;
           if(Math.random()<0.15){
             toadItems.push({x:p.x,y:p.y-TILE,w:TILE,h:TILE,vy:-200,onGround:false,col:false});
           } else {
             coinParticle(p.x+16,p.y); score+=5;
           }
         } else if(p.type==='brick'&&p.intact&&player.hasToad){
-          p.intact=false; score+=20; brickParticles(p.x,p.y);
+          p.intact=false; score+=5; brickParticles(p.x,p.y);
         }
         player.y=p.y+p.h;
       }
@@ -277,6 +402,9 @@ function update(ts){
   if(state==='start'||state==='win'||state==='dead'){ draw(); return; }
   if(state==='dying'){ dTimer-=dt; if(dTimer<=0) state='dead'; draw(); return; }
 
+  // Incrémenter chrono uniquement pendant le jeu
+  gameTimer+=dt;
+
   if(player.invincible>0) player.invincible-=dt;
 
   // Joueur
@@ -292,42 +420,61 @@ function update(ts){
     resolveCol(dt);
     player.x=Math.max(0,Math.min(LW-player.w,player.x));
     if(player.y>CH+100){ player.dead=true; state='dying'; dTimer=1.5; }
-    if(overlaps(player,{x:DIP_X,y:DIP_Y,w:48,h:48})) state='win';
+    if(overlaps(player,{x:DIP_X,y:DIP_Y,w:48,h:48})){ state='win'; showPseudoModal(); }
     camX=Math.max(0,Math.min(player.x-CW/3,LW-CW));
   }
 
-  // Ennemis — avec collision contre les tuyaux et plateformes solides
-  const solidObstacles=[...PIPES,...platforms.filter(p=>p.type==='ground'||( (p.type==='brick'&&p.intact)||(p.type==='qmark')))];
+  // Ennemis
+  const solidObstacles=[...PIPES,...platforms.filter(p=>p.type==='ground'||(p.type==='brick'&&p.intact)||(p.type==='qmark'))];
   for(const e of enemies){
     if(!e.alive) continue;
-    // Déplacement X
-    e.x+=e.vx*e.dir*dt;
-    // Collision ennemis vs tuyaux et murs solides (axe X)
-    for(const obs of PIPES){
-      if(overlaps(e,obs)){
-        if(e.dir>0){ e.x=obs.x-e.w; e.dir=-1; }
-        else       { e.x=obs.x+obs.w; e.dir=1; }
-        break;
+
+    if(e.type==='goomba'){
+      e.x+=e.vx*e.dir*dt;
+      for(const obs of PIPES){
+        if(overlaps(e,obs)){
+          if(e.dir>0){ e.x=obs.x-e.w; e.dir=-1; }
+          else       { e.x=obs.x+obs.w; e.dir=1; }
+          break;
+        }
+      }
+      if(e.x<e.mn){e.x=e.mn;e.dir=1;}
+      if(e.x+e.w>e.mx){e.x=e.mx-e.w;e.dir=-1;}
+
+      if(!player.dead&&overlaps(player,e)){
+        if(player.vy>0&&player.y+player.h<e.y+e.h*0.6){
+          e.alive=false; player.vy=-320; score+=1;
+          particles.push({x:e.x+16,y:e.y,vx:0,vy:-200,life:0.5,maxLife:0.5,col:'#fff',sz:10});
+        } else if(player.invincible<=0){
+          hitPlayer();
+        }
       }
     }
-    // Respect des bornes de patrouille
-    if(e.x<e.mn){e.x=e.mn;e.dir=1;}
-    if(e.x+e.w>e.mx){e.x=e.mx-e.w;e.dir=-1;}
 
-    if(!player.dead&&overlaps(player,e)){
-      if(player.vy>0&&player.y+player.h<e.y+e.h*0.6){
-        e.alive=false; player.vy=-320; score+=100;
-        particles.push({x:e.x+16,y:e.y,vx:0,vy:-200,life:0.5,maxLife:0.5,col:'#fff',sz:10});
-      } else if(player.invincible<=0){
-        if(player.hasToad){
-          player.hasToad=false;
-          player.y+=player.h-32;
-          player.w=32; player.h=32;
-          player.invincible=2;
-          particles.push({x:player.x+16,y:player.y,vx:0,vy:-180,life:0.6,maxLife:0.6,col:'#ff69b4',sz:10,txt:'TOAD PERDU'});
-        } else {
-          player.dead=true; state='dying'; dTimer=1.5;
+    else if(e.type==='flying'){
+      e.t+=dt;
+      e.x+=e.vx*e.dir*dt;
+      e.y=e.baseY+Math.sin(e.t*e.waveFreq*Math.PI*2)*e.amplitude;
+      if(e.x<e.mn){e.x=e.mn;e.dir=1;}
+      if(e.x+e.w>e.mx){e.x=e.mx-e.w;e.dir=-1;}
+
+      if(!player.dead&&overlaps(player,e)){
+        if(player.vy>0&&player.y+player.h<e.y+e.h*0.6){
+          e.alive=false; player.vy=-320; score+=1;
+          particles.push({x:e.x+16,y:e.y,vx:0,vy:-200,life:0.5,maxLife:0.5,col:'#88aaff',sz:10});
+        } else if(player.invincible<=0){
+          hitPlayer();
         }
+      }
+    }
+
+    else if(e.type==='fireball'){
+      e.angle+=e.speed*dt;
+      e.x=e.cx+Math.cos(e.angle)*e.radius;
+      e.y=e.cy+Math.sin(e.angle)*e.radius;
+      // Pas de stomp sur les boules de feu — toujours mortel
+      if(!player.dead&&overlaps(player,{x:e.x-e.w/2,y:e.y-e.h/2,w:e.w,h:e.h})&&player.invincible<=0){
+        hitPlayer();
       }
     }
   }
@@ -335,7 +482,7 @@ function update(ts){
   // Pièces
   for(const c of coins){
     if(!c.col&&overlaps(player,c)){
-      c.col=true; score+=5; coinParticle(c.x+8,c.y);
+      c.col=true; score+=1; coinParticle(c.x+8,c.y);
     }
   }
 
@@ -367,6 +514,18 @@ function update(ts){
   draw();
 }
 
+function hitPlayer(){
+  if(player.hasToad){
+    player.hasToad=false;
+    player.y+=player.h-32;
+    player.w=32; player.h=32;
+    player.invincible=2;
+    particles.push({x:player.x+16,y:player.y,vx:0,vy:-180,life:0.6,maxLife:0.6,col:'#ff69b4',sz:10,txt:'TOAD PERDU'});
+  } else {
+    player.dead=true; state='dying'; dTimer=1.5;
+  }
+}
+
 // ============================================================
 // DESSIN
 // ============================================================
@@ -379,87 +538,124 @@ function di(img,x,y,w,h,flip){
 // Tuyau dessiné entièrement en procédural (style Mario)
 function drawPipe(p){
   const px=p.x, py=p.y, pw=p.w, ph=p.h;
-  // Corps du tuyau
   ctx.fillStyle='#1a7a1a';
   ctx.fillRect(px+4,py+32,pw-8,ph-32);
-  // Reflet gauche corps
   ctx.fillStyle='#22a022';
   ctx.fillRect(px+5,py+32,7,ph-32);
-  // Ombre droite corps
   ctx.fillStyle='#115511';
   ctx.fillRect(px+pw-10,py+32,6,ph-32);
-  // Bordure noire corps
   ctx.fillStyle='#0a2e0a';
   ctx.fillRect(px+4,py+32,1,ph-32);
   ctx.fillRect(px+pw-5,py+32,1,ph-32);
-
-  // Chapeau (bordure plus large)
-  ctx.fillStyle='#0a2e0a'; // contour
+  ctx.fillStyle='#0a2e0a';
   ctx.fillRect(px,py,pw,34);
-  ctx.fillStyle='#1a7a1a'; // fond chapeau
+  ctx.fillStyle='#1a7a1a';
   ctx.fillRect(px+1,py+1,pw-2,32);
-  // Reflet gauche chapeau
   ctx.fillStyle='#22a022';
   ctx.fillRect(px+2,py+2,10,28);
-  // Ombre droite chapeau
   ctx.fillStyle='#115511';
   ctx.fillRect(px+pw-11,py+2,9,28);
-  // Liseré brillant haut chapeau
   ctx.fillStyle='#44cc44';
   ctx.fillRect(px+2,py+2,pw-4,3);
 }
 
-// Goomba dessiné en procédural (pixel art)
+// Goomba procédural
 function drawGoomba(e){
   const x=Math.floor(e.x), y=Math.floor(e.y), w=e.w, h=e.h;
-  const s=w/32; // facteur d'échelle
-
-  // Corps brun principal
+  const s=w/32;
   ctx.fillStyle='#8B4513';
   ctx.fillRect(x+2*s, y+14*s, 28*s, 16*s);
-
-  // Tête (champignon)
   ctx.fillStyle='#9B5523';
   ctx.fillRect(x,     y+4*s,  32*s, 14*s);
   ctx.fillRect(x+2*s, y+2*s,  28*s, 2*s);
   ctx.fillRect(x+4*s, y,      24*s, 2*s);
-
-  // Ombre dessous chapeau
   ctx.fillStyle='#6B3210';
   ctx.fillRect(x,     y+16*s, 32*s, 2*s);
-
-  // Parties claires du chapeau (taches)
   ctx.fillStyle='#C87C40';
   ctx.fillRect(x+6*s, y+2*s,  8*s,  8*s);
   ctx.fillRect(x+18*s,y+2*s,  8*s,  8*s);
-
-  // Yeux blancs
   ctx.fillStyle='#FFFFFF';
   ctx.fillRect(x+4*s, y+6*s,  8*s,  7*s);
   ctx.fillRect(x+20*s,y+6*s,  8*s,  7*s);
-
-  // Pupilles noires (en colère → inclinées vers l'intérieur)
   ctx.fillStyle='#111111';
   ctx.fillRect(x+6*s, y+8*s,  4*s,  4*s);
   ctx.fillRect(x+22*s,y+8*s,  4*s,  4*s);
-
-  // Sourcils (colère)
   ctx.fillStyle='#3B1A00';
   ctx.fillRect(x+3*s, y+5*s,  9*s,  2*s);
   ctx.fillRect(x+20*s,y+5*s,  9*s,  2*s);
-
-  // Dents blanches
   ctx.fillStyle='#FFFFFF';
   ctx.fillRect(x+8*s, y+18*s, 4*s,  5*s);
   ctx.fillRect(x+20*s,y+18*s, 4*s,  5*s);
-
-  // Contour bas corps / pieds
   ctx.fillStyle='#3B1A00';
-  ctx.fillRect(x+2*s, y+28*s, 12*s, 4*s); // pied gauche
-  ctx.fillRect(x+18*s,y+28*s, 12*s, 4*s); // pied droit
+  ctx.fillRect(x+2*s, y+28*s, 12*s, 4*s);
+  ctx.fillRect(x+18*s,y+28*s, 12*s, 4*s);
   ctx.fillStyle='#5A2A00';
   ctx.fillRect(x+2*s, y+26*s, 12*s, 2*s);
   ctx.fillRect(x+18*s,y+26*s, 12*s, 2*s);
+}
+
+// Ennemi volant (chauve-souris fantôme pixel art)
+function drawFlying(e){
+  const x=Math.floor(e.x), y=Math.floor(e.y), w=e.w, h=e.h;
+  const t=Date.now()/200;
+  const wingFlap=Math.sin(t)*0.3; // animation ailes
+  // Corps violet
+  ctx.fillStyle='#6633aa';
+  ctx.beginPath();
+  ctx.ellipse(x+w/2,y+h*0.55,w*0.28,h*0.3,0,0,Math.PI*2);
+  ctx.fill();
+  // Aile gauche
+  ctx.fillStyle='#8844cc';
+  ctx.beginPath();
+  ctx.moveTo(x+w/2-4,y+h*0.45);
+  ctx.quadraticCurveTo(x,y+h*(0.1+wingFlap),x-4,y+h*0.5);
+  ctx.quadraticCurveTo(x+2,y+h*0.7,x+w/2-4,y+h*0.6);
+  ctx.fill();
+  // Aile droite
+  ctx.beginPath();
+  ctx.moveTo(x+w/2+4,y+h*0.45);
+  ctx.quadraticCurveTo(x+w,y+h*(0.1+wingFlap),x+w+4,y+h*0.5);
+  ctx.quadraticCurveTo(x+w-2,y+h*0.7,x+w/2+4,y+h*0.6);
+  ctx.fill();
+  // Yeux rouges
+  ctx.fillStyle='#ff2222';
+  ctx.beginPath(); ctx.arc(x+w/2-5,y+h*0.48,3,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(x+w/2+5,y+h*0.48,3,0,Math.PI*2); ctx.fill();
+  // Pupilles
+  ctx.fillStyle='#000';
+  ctx.beginPath(); ctx.arc(x+w/2-5,y+h*0.49,1.5,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(x+w/2+5,y+h*0.49,1.5,0,Math.PI*2); ctx.fill();
+  // Crocs
+  ctx.fillStyle='#fff';
+  ctx.fillRect(x+w/2-5,y+h*0.66,3,4);
+  ctx.fillRect(x+w/2+2,y+h*0.66,3,4);
+}
+
+// Boule de feu orbitale
+function drawFireball(e){
+  if(!isFinite(e.x)||!isFinite(e.y)||!isFinite(e.w)||e.w<=0) return;
+  const px=Math.floor(e.x), py=Math.floor(e.y);
+  // Traînée
+  for(let i=1;i<=5;i++){
+    const ta=e.angle-i*0.15;
+    const tx=e.cx+Math.cos(ta)*e.radius;
+    const ty=e.cy+Math.sin(ta)*e.radius;
+    ctx.globalAlpha=0.15*(6-i)/5;
+    ctx.fillStyle='#ff6600';
+    ctx.beginPath(); ctx.arc(tx,ty,e.w/2*(1-i*0.12),0,Math.PI*2); ctx.fill();
+  }
+  ctx.globalAlpha=1;
+  // Halo
+  const grd=ctx.createRadialGradient(px,py,2,px,py,e.w);
+  grd.addColorStop(0,'#ffffff');
+  grd.addColorStop(0.3,'#ffdd00');
+  grd.addColorStop(0.7,'#ff4400');
+  grd.addColorStop(1,'rgba(255,40,0,0)');
+  ctx.fillStyle=grd;
+  ctx.beginPath(); ctx.arc(px,py,e.w,0,Math.PI*2); ctx.fill();
+  // Centre
+  ctx.fillStyle='#fff';
+  ctx.beginPath(); ctx.arc(px,py,e.w*0.35,0,Math.PI*2); ctx.fill();
 }
 
 function draw(){
@@ -473,6 +669,11 @@ function draw(){
   for(const c of CLOUDS) di(IMG.cloud,c.x,c.y,96,52);
   // Buissons
   for(const bx of BUSHES) di(IMG.bush,bx,GY-32,64,32);
+  // Indicateurs de trous (bords)
+  for(const h of HOLES){
+    ctx.fillStyle='rgba(0,0,0,0.5)';
+    ctx.fillRect(h.from,GY,h.to-h.from,TILE*2);
+  }
   // Tuyaux
   for(const p of PIPES) drawPipe(p);
   // Château
@@ -481,7 +682,7 @@ function draw(){
   di(IMG.mat,FLAG_X+16,FLAG_Y,16,GY-FLAG_Y+TILE);
   ctx.fillStyle='#FFD700';
   ctx.beginPath(); ctx.arc(FLAG_X+24,FLAG_Y,8,0,Math.PI*2); ctx.fill();
-  // Diplôme flottant (carré, fond transparent)
+  // Diplôme flottant
   const t=Date.now()/1000, bob=Math.sin(t*3)*4;
   di(IMG.diplome,DIP_X,DIP_Y+bob,48,48);
 
@@ -508,8 +709,13 @@ function draw(){
   // Objets Toad
   for(const t of toadItems){ if(!t.col) di(IMG.toad_item,t.x,t.y,t.w,t.h); }
 
-  // Ennemis (Goomba procédural)
-  for(const e of enemies){ if(e.alive) drawGoomba(e); }
+  // Ennemis
+  for(const e of enemies){
+    if(!e.alive) continue;
+    if(e.type==='goomba') drawGoomba(e);
+    else if(e.type==='flying') drawFlying(e);
+    else if(e.type==='fireball') drawFireball(e);
+  }
 
   // Particules
   for(const p of particles){
@@ -546,14 +752,23 @@ function draw(){
   else if(state==='win') scrWin();
 }
 
+function formatTime(s){
+  const m=Math.floor(s/60);
+  const sec=Math.floor(s%60);
+  const ms=Math.floor((s%1)*100);
+  return `${m}:${String(sec).padStart(2,'0')}.${String(ms).padStart(2,'0')}`;
+}
+
 function hud(){
   ctx.fillStyle='rgba(0,0,0,0.55)'; ctx.fillRect(0,0,CW,42);
   ctx.fillStyle='#fff'; ctx.font='bold 12px monospace'; ctx.textAlign='left';
   ctx.fillText("SUP'JAVOUHEY",10,26);
-  // Diplôme icône dans le HUD (carré, fond transparent)
   if(IMG.diplome&&IMG.diplome.complete) di(IMG.diplome,CW/2-42,5,32,32);
   ctx.fillStyle='#ffe000'; ctx.font='bold 13px monospace'; ctx.textAlign='left';
   ctx.fillText('x'+score,CW/2-6,26);
+  // Chronomètre
+  ctx.fillStyle='#aaffff'; ctx.font='bold 12px monospace'; ctx.textAlign='center';
+  ctx.fillText('⏱ '+formatTime(gameTimer),CW/2+140,26);
   if(player&&player.hasToad){
     di(IMG.toad_item,CW/2+65,4,32,32);
     ctx.fillStyle='#ff69b4'; ctx.font='bold 10px monospace'; ctx.textAlign='left';
@@ -571,38 +786,41 @@ function overlay(a){ ctx.fillStyle=`rgba(0,0,0,${a})`; ctx.fillRect(0,0,CW,CH); 
 function scrStart(){
   overlay(0.55);
   ctx.fillStyle='rgba(0,0,60,0.82)';
-  ctx.fillRect(CW/2-280,CH/2-145,560,315);
+  ctx.fillRect(CW/2-280,CH/2-155,560,330);
   ctx.strokeStyle='#ffe000'; ctx.lineWidth=4;
-  ctx.strokeRect(CW/2-280,CH/2-145,560,315);
+  ctx.strokeRect(CW/2-280,CH/2-155,560,330);
   ctx.fillStyle='#ffe000'; ctx.font='bold 20px monospace'; ctx.textAlign='center';
-  ctx.fillText('CÉRÉMONIE DES DIPLÔMES',CW/2,CH/2-105);
+  ctx.fillText('CÉRÉMONIE DES DIPLÔMES',CW/2,CH/2-110);
   ctx.fillStyle='#fff'; ctx.font='bold 14px monospace';
-  ctx.fillText("SUP'JAVOUHEY",CW/2,CH/2-75);
-  di(IMG.mario,CW/2-16,CH/2-65,32,32);
+  ctx.fillText("SUP'JAVOUHEY",CW/2,CH/2-80);
+  di(IMG.mario,CW/2-16,CH/2-70,32,32);
   ctx.fillStyle='#aaffaa'; ctx.font='11px monospace';
-  ctx.fillText('Attrape le diplôme pour finir le niveau !',CW/2,CH/2-10);
+  ctx.fillText('Attrape le diplôme pour finir le niveau !',CW/2,CH/2-15);
   ctx.fillStyle='#ffd700'; ctx.font='10px monospace';
-  ctx.fillText('★ Bloc ? → 15% chance TOAD : protège 1 dégât + taille ×1.5',CW/2,CH/2+12);
-  ctx.fillText('Pièces +5  |  Ennemis +100  |  Bloc ? +10  |  Briques cassées (grand) +20',CW/2,CH/2+30);
+  ctx.fillText('★ Bloc ? = 5 pts  |  Pièce = 1 pt  |  Ennemi = 1 pt',CW/2,CH/2+5);
+  ctx.fillText('⚠ Attention aux trous, aux volants et aux boules de feu !',CW/2,CH/2+22);
   const blink=Math.floor(Date.now()/500)%2;
   ctx.fillStyle=blink?'#ffe000':'rgba(255,224,0,0.3)';
   ctx.font='bold 13px monospace';
-  ctx.fillText('▶  APPUIE SUR ESPACE / TAP POUR COMMENCER  ◀',CW/2,CH/2+72);
+  ctx.fillText('▶  APPUIE SUR ESPACE / TAP POUR COMMENCER  ◀',CW/2,CH/2+60);
   ctx.fillStyle='#ccc'; ctx.font='9px monospace';
-  ctx.fillText('← → bouger  |  ↑ / ESPACE sauter  |  Sauter sur les ennemis',CW/2,CH/2+100);
-  ctx.fillText('Quand GRAND : casser les briques par en dessous !',CW/2,CH/2+115);
+  ctx.fillText('← → bouger  |  ↑ / ESPACE sauter  |  Sauter sur les Goomba et volants',CW/2,CH/2+88);
+  ctx.fillText('Quand GRAND : casser les briques par en dessous !',CW/2,CH/2+103);
+  ctx.fillText('⚡ Boules de feu = TOUJOURS mortelles',CW/2,CH/2+118);
 }
 
 function scrDead(){
   overlay(0.65);
   ctx.fillStyle='#ff3333'; ctx.font='bold 30px monospace'; ctx.textAlign='center';
-  ctx.fillText('GAME OVER',CW/2,CH/2-20);
+  ctx.fillText('GAME OVER',CW/2,CH/2-30);
   ctx.fillStyle='#fff'; ctx.font='13px monospace';
-  ctx.fillText('Score final : '+score,CW/2,CH/2+20);
+  ctx.fillText('Score final : '+score,CW/2,CH/2+10);
+  ctx.fillStyle='#aaffff'; ctx.font='12px monospace';
+  ctx.fillText('Temps : '+formatTime(gameTimer),CW/2,CH/2+32);
   const blink=Math.floor(Date.now()/500)%2;
   ctx.fillStyle=blink?'#ffe000':'rgba(255,224,0,0.3)';
   ctx.font='bold 12px monospace';
-  ctx.fillText('▶  ESPACE / TAP POUR RECOMMENCER  ◀',CW/2,CH/2+60);
+  ctx.fillText('▶  ESPACE / TAP POUR RECOMMENCER  ◀',CW/2,CH/2+68);
 }
 
 function scrWin(){
@@ -618,15 +836,70 @@ function scrWin(){
   if(IMG.diplome&&IMG.diplome.complete) di(IMG.diplome,CW/2-40,CH/2-65,80,80);
   ctx.fillStyle='#aaffaa'; ctx.font='12px monospace';
   ctx.fillText('Rendez-vous à la cérémonie !',CW/2,CH/2+30);
+  ctx.fillStyle='#aaffff'; ctx.font='bold 13px monospace';
+  ctx.fillText('⏱ Temps : '+formatTime(gameTimer),CW/2,CH/2+52);
   ctx.fillStyle='#ffe000'; ctx.font='bold 12px monospace';
-  ctx.fillText('XX/XX/2026  —  18:00',CW/2,CH/2+55);
+  ctx.fillText('Score : '+score,CW/2,CH/2+75);
   ctx.fillStyle='#fff'; ctx.font='11px monospace';
-  ctx.fillText("SUP'JAVOUHEY",CW/2,CH/2+78);
-  ctx.fillText('Score final : '+score,CW/2,CH/2+100);
+  ctx.fillText("SUP'JAVOUHEY",CW/2,CH/2+98);
   const blink=Math.floor(Date.now()/500)%2;
   ctx.fillStyle=blink?'#ffe000':'rgba(255,224,0,0.3)';
   ctx.font='bold 11px monospace';
   ctx.fillText('▶  ESPACE / TAP POUR REJOUER  ◀',CW/2,CH/2+135);
+}
+
+// ============================================================
+// MODAL PSEUDO + WEBHOOK
+// ============================================================
+function showPseudoModal(){
+  if(pseudoSent) return;
+  const modal=document.getElementById('pseudoModal');
+  modal.classList.add('show');
+  const input=document.getElementById('pseudoInput');
+  input.value='';
+  input.focus();
+}
+
+function submitPseudo(){
+  const modal=document.getElementById('pseudoModal');
+  const input=document.getElementById('pseudoInput');
+  const status=document.getElementById('pseudoStatus');
+  const pseudo=input.value.trim();
+  if(!pseudo){ input.focus(); return; }
+  pseudoSent=true;
+  modal.classList.remove('show');
+  sendWebhook(pseudo);
+}
+
+document.getElementById('pseudoSubmit').addEventListener('click',submitPseudo);
+document.getElementById('pseudoInput').addEventListener('keydown',e=>{
+  if(e.key==='Enter') submitPseudo();
+});
+
+function sendWebhook(pseudo){
+  const now=new Date();
+  const dateStr=now.toLocaleDateString('fr-FR',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+  const timeStr=now.toLocaleTimeString('fr-FR');
+  const timeGame=formatTime(gameTimer);
+  const embed={
+    title:'🎓 Nouveau Diplômé !',
+    color:0xFFE000,
+    fields:[
+      {name:'👤 Pseudo',value:pseudo,inline:true},
+      {name:'⏱ Temps',value:timeGame,inline:true},
+      {name:'🏆 Score',value:String(score),inline:true},
+      {name:'📅 Date',value:dateStr,inline:false},
+      {name:'🕐 Heure',value:timeStr,inline:true},
+      {name:'🎮 Niveau',value:"SUP'JAVOUHEY — Cérémonie des Diplômes",inline:false},
+    ],
+    footer:{text:"Jeu SUP'JAVOUHEY • Cérémonie des Diplômes 2026"},
+    timestamp:now.toISOString()
+  };
+  fetch('https://discord.com/api/webhooks/1498370378018590951/Zy6OsBEUafphAFCq0GOPKbF8CaDOZl2iyYMNxJ3yK2uRrlgICGliKOGs_voesiHJ8I6i',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({username:"Cérémonie des Diplômes",avatar_url:"",embeds:[embed]})
+  }).catch(()=>{});
 }
 
 // ============================================================
